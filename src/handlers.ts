@@ -1,9 +1,9 @@
 import { Env, LEAGUE, clip, esc, isAdmin, kyiv, nowIso, plural } from "./util";
-import { View, answer, edit, send } from "./tg";
+import { View, answer, edit, send, tg } from "./tg";
 import { ADMIN_HELP, HELP, PRIVACY, RULES, WELCOME } from "./texts";
 import {
   NO_MATCHES, OtherPred, Row, TeamRow, activeMatchday, championView, customAway, customHome,
-  editList, matchCard, othersList, othersMatch, tableView, tourRows, tourView,
+  editList, matchCard, othersList, othersMatch, tableLines, tableView, tourRows, tourView,
 } from "./views";
 import { broadcast, runCron, scoreMatch, standings, syncFixtures } from "./jobs";
 import { HIT_ICON, HIT_LABEL, Hit } from "./scoring";
@@ -84,7 +84,8 @@ async function championScreen(env: Env, userId: number): Promise<View> {
 
 async function onMessage(env: Env, msg: TgMessage) {
   const from = msg.from;
-  if (!from || msg.chat.type !== "private" || !msg.text) return;
+  if (!from || !msg.text) return;
+  if (msg.chat.type !== "private") return onGroupMessage(env, msg, from);
   const chat = msg.chat.id;
   const [rawCmd, ...rest] = msg.text.trim().split(/\s+/);
   const cmd = rawCmd.split("@")[0].toLowerCase();
@@ -97,6 +98,9 @@ async function onMessage(env: Env, msg: TgMessage) {
 
   switch (cmd) {
     case "/start":
+      // перехід із кнопки в груповому чаті: t.me/<бот>?start=tour або ?start=table
+      if (arg === "tour") { await send(env, chat, await tourScreen(env, from.id, 0)); return; }
+      if (arg === "table") { await send(env, chat, await tableScreen(env, from.id, null)); return; }
       await send(env, chat, {
         text: WELCOME(esc(name)),
         kb: [[{ text: "Зробити прогнози", callback_data: "go:0", style: "primary" }],
@@ -140,6 +144,51 @@ async function onMessage(env: Env, msg: TgMessage) {
     if (handled) return;
   }
   await send(env, chat, { text: "Не знаю такої команди. Дивись /help." });
+}
+
+// ───────────── Груповий чат ─────────────
+// У групі бот лише публікує таблицю й нагадування. Прогнози — тільки в особистих,
+// тому тут немає кнопок із callback_data, лише посилання на особистий чат.
+
+async function onGroupMessage(env: Env, msg: TgMessage, from: TgUser) {
+  const raw = msg.text!.trim().split(/\s+/)[0];
+  if (!raw.startsWith("/")) return;
+  const [cmd, mention] = raw.toLowerCase().split("@");
+  const chat = msg.chat.id;
+
+  if (cmd === "/here") {
+    if (!isAdmin(env, from.id)) return;
+    const me = await tg(env, "getMe", {});
+    const username = (me.result as { username?: string } | undefined)?.username;
+    if (!username) { await send(env, chat, { text: "Не вдалося отримати дані бота, спробуй ще раз." }); return; }
+    const put = "INSERT INTO meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+    await env.DB.batch([
+      env.DB.prepare(put).bind("group_id", String(chat)),
+      env.DB.prepare(put).bind("bot_username", username),
+    ]);
+    await send(env, chat, {
+      text: "Готово. Сюди приходитимуть нагадування перед матчами й таблиця після кожного ігрового вечора. Прогнози приймаю в особистих повідомленнях.",
+      kb: [[{ text: "Відкрити бота", url: `https://t.me/${username}?start=tour` }]],
+    });
+    return;
+  }
+
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'bot_username'").first<{ value: string }>();
+  const username = row?.value;
+  if (!username || (mention && mention !== username.toLowerCase())) return; // команда для іншого бота
+  if (cmd === "/table" || cmd === "/leaderboard") {
+    const st = await standings(env, null);
+    await send(env, chat, {
+      text: st.length ? `🏆 <b>Загальна таблиця</b>
+<pre>${esc(tableLines(st, null, 40).join("\n"))}</pre>` : "Поки що нікого немає.",
+      kb: [[{ text: "Мої бали", url: `https://t.me/${username}?start=table` }]],
+    });
+    return;
+  }
+  await send(env, chat, {
+    text: "Прогнози й усе особисте — у приватному чаті зі мною.",
+    kb: [[{ text: "Відкрити бота", url: `https://t.me/${username}?start=tour` }]],
+  });
 }
 
 async function onAdmin(env: Env, chat: number, adminId: number, cmd: string, args: string[], arg: string): Promise<boolean> {
@@ -224,7 +273,7 @@ async function onAdmin(env: Env, chat: number, adminId: number, cmd: string, arg
 async function onCallback(env: Env, cb: TgCallback) {
   const msg = cb.message;
   const data = cb.data ?? "";
-  if (!msg) { await answer(env, cb.id); return; }
+  if (!msg || msg.chat.type !== "private") { await answer(env, cb.id); return; }
   const chat = msg.chat.id, mid = msg.message_id, uid = cb.from.id;
   const [op, ...a] = data.split(":");
   const n = a.map(Number);

@@ -180,12 +180,19 @@ export function rank(rows: Omit<Standing, "place">[]): Standing[] {
   return out;
 }
 
-export function tableView(st: Standing[], meId: number, title: string, md: number | null, activeMd: number | null): View {
+/** Рядки таблиці для моноширинного блоку. meId — кого позначити «›» (null у груповому чаті). */
+export function tableLines(st: Standing[], meId: number | null, limit = 100): string[] {
   const lines = [`  # ${"Учасник".padEnd(15)} Бали 🎯`];
-  for (const s of st) {
+  for (const s of st.slice(0, limit)) {
     const mark = s.tg_id === meId ? "›" : " ";
     lines.push(`${mark}${String(s.place).padStart(2)} ${clip(s.display_name, 15).padEnd(15)} ${String(s.total).padStart(4)} ${String(s.exact).padStart(2)}`);
   }
+  if (st.length > limit) lines.push(`   … ще ${st.length - limit}`);
+  return lines;
+}
+
+export function tableView(st: Standing[], meId: number, title: string, md: number | null, activeMd: number | null): View {
+  const lines = tableLines(st, meId);
   const kb: Keyboard = [];
   if (md == null && activeMd != null) kb.push([{ text: `Таблиця туру ${activeMd}`, callback_data: `tb:${activeMd}` }]);
   if (md != null) kb.push([{ text: "Загальна таблиця", callback_data: "tb:all" }]);

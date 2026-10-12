@@ -1,6 +1,6 @@
 import type { Env } from "./util";
 
-export interface Button { text: string; callback_data: string; style?: "primary" | "success" | "danger" }
+export interface Button { text: string; callback_data?: string; url?: string; style?: "primary" | "success" | "danger" }
 export type Keyboard = Button[][];
 export interface View { text: string; kb?: Keyboard }
 

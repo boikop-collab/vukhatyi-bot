@@ -24,7 +24,7 @@ export const esc = (s: string) =>
 export const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n - 1) + "…");
 
 export const isAdmin = (env: Env, id: number) =>
-  env.ADMIN_IDS.split(",").map((s) => s.trim()).includes(String(id));
+  (env.ADMIN_IDS ?? "").split(",").map((s) => s.trim()).includes(String(id));
 
 // У Workers немає української локалі для Intl, тому беремо лише числа, а назви — свої.
 const DTF = new Intl.DateTimeFormat("en-GB", {

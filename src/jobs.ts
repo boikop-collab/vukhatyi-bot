@@ -3,7 +3,7 @@ import { fdMatches, regulationScore } from "./football";
 import { HIT_ICON, Hit, hitType, pointsFor } from "./scoring";
 import { ukName } from "./teamsUk";
 import { Keyboard, tg } from "./tg";
-import { rank } from "./views";
+import { rank, tableLines } from "./views";
 
 // Ліміти безкоштовного тарифу Workers: до 50 запитів до D1 і до 50 зовнішніх запитів за один запуск.
 // Тому кожна задача робить обмежену кількість роботи, решта — у наступному запуску (cron кожні 2 хв).
@@ -22,6 +22,14 @@ function enqueue(env: Env, tgId: number, text: string, kb: Keyboard | null, sile
   return env.DB.prepare(
     "INSERT INTO outbox (tg_id, text, markup, silent, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
   ).bind(tgId, text, kb ? JSON.stringify({ inline_keyboard: kb }) : null, silent ? 1 : 0, now);
+}
+
+/** Груповий чат турніру (адмін вмикає командою /here у групі). Кнопка веде в особистий чат із ботом. */
+export function groupChat(meta: Map<string, string>): { id: number; open: Keyboard } | null {
+  const id = Number(meta.get("group_id"));
+  const username = meta.get("bot_username");
+  if (!id || !username) return null;
+  return { id, open: [[{ text: "Зробити прогнози", url: `https://t.me/${username}?start=tour` }]] };
 }
 
 /** Поставити в чергу повідомлення всім активним учасникам (розсилка адміна). */
@@ -161,6 +169,14 @@ export async function enqueueReminders(env: Env, now: string, meta: Map<string, 
     `У тебе немає прогнозу на <b>${u.n}</b> з них.`,
     [[{ text: `Зробити ${u.n} ${plural(u.n, "прогноз", "прогнози", "прогнозів")}`, callback_data: `go:${u.md}`, style: "primary" }]],
     false, now));
+  const group = groupChat(meta);
+  if (group) {
+    stmts.push(enqueue(env, group.id,
+      `⏰ Сьогодні ${first.n} ${plural(first.n, "матч", "матчі", "матчів")} Ліги чемпіонів, перший о <b>${time}</b>.
+` +
+      `Прогноз на кожен матч приймається до його стартового свистка.`,
+      group.open, false, now));
+  }
   stmts.push(setMeta(env, `remind:${today}`, now));
   await env.DB.batch(stmts);
   return missing.results.length;
@@ -254,6 +270,29 @@ export async function enqueueDigests(env: Env, now: string, meta: Map<string, st
       `<b>${k.wdFull}, тур ${list[0].matchday}</b> · твої <b>+${sum}</b>\n<pre>${esc(lines.join("\n"))}</pre>${tail}`,
       [[{ text: "Таблиця", callback_data: "tb:all" }, { text: "Прогнози інших", callback_data: `o:${list[0].matchday}` }]],
       true, now)); // тихо: матчі закінчуються близько півночі за Києвом
+  }
+  const group = groupChat(meta);
+  if (group && byUser.size) {
+    const nameOf = new Map(table.map((s) => [s.tg_id, s.display_name]));
+    const best = [...byUser].map(([id, list]) => ({
+      name: nameOf.get(id) ?? "?",
+      sum: list.reduce((s, p) => s + (p.points ?? 0), 0),
+    })).sort((x, y) => y.sum - x.sum || x.name.localeCompare(y.name)).slice(0, 5);
+    const bestLines = best.map((b, i) => `${String(i + 1).padStart(2)} ${clip(b.name, 15).padEnd(15)} ${("+" + b.sum).padStart(4)}`);
+    const exact = preds.results.filter((p) => p.hit === "exact").slice(0, 8).map((p) =>
+      `🎯 ${esc(nameOf.get(p.user_id) ?? "?")}: ${esc(p.hu ?? p.hn)} ${p.home_score}:${p.away_score} ${esc(p.au ?? p.an)}`);
+    const md = preds.results[0].matchday;
+    stmts.push(enqueue(env, group.id,
+      `<b>${k.wdFull}, тур ${md}: підсумок дня</b>
+<pre>${esc(bestLines.join("\n"))}</pre>` +
+      (exact.length ? `
+${exact.join("\n")}
+` : "") +
+      `
+🏆 <b>Загальна таблиця</b>
+<pre>${esc(tableLines(table, null, 10).join("\n"))}</pre>`,
+      [[{ text: "Мої бали й повна таблиця", url: group.open[0][0].url!.replace("start=tour", "start=table") }]],
+      true, now));
   }
   stmts.push(setMeta(env, `digest:${day.d}`, now));
   await env.DB.batch(stmts);
