@@ -21,6 +21,8 @@ export const TEAMS_UK_BY_NAME: Record<string, string> = {
   "fenerbahçe": "Фенербахче", "beşiktaş": "Бешикташ", "braga": "Брага", "girona": "Жирона",
   "bologna": "Болонья", "lazio": "Лаціо", "real sociedad": "Реал Сосьєдад", "real betis": "Бетіс",
   "pafos": "Пафос", "kairat": "Кайрат", "genk": "Генк", "rangers": "Рейнджерс",
+  "como 1907": "Комо", "lask": "ЛАСК", "pae aek": "АЕК", "rc lens": "Ланс", "sabah fk": "Сабах",
+  "shaktar": "Шахтар", "sl. bratislava": "Слован", "viking": "Вікінг",
 };
 
 export function ukName(shortName: string | null): string | null {
