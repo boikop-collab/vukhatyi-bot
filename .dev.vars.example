@@ -1,0 +1,5 @@
+# Скопіюй у .dev.vars для локального запуску (wrangler dev). Файл .dev.vars у git не потрапляє.
+BOT_TOKEN=123456:test-token
+WEBHOOK_SECRET=local-secret
+FOOTBALL_API_KEY=your-football-data-key
+ADMIN_IDS=123456789

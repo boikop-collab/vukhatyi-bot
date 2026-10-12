@@ -1,0 +1,23 @@
+{
+  "name": "vukhatyi-bot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "triggers": { "crons": ["*/2 * * * *"] },
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vukhatyi",
+      "database_id": "3235348c-261c-46df-ae78-253d1c542045",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // ADMIN_IDS (Telegram ID адмінів через кому) задається секретом: wrangler secret put ADMIN_IDS
+    "SEASON": "2026",
+    // З якого туру лігового етапу рахуємо прогнози
+    "START_MATCHDAY": "2",
+    // До якого моменту (UTC) можна обрати чемпіона
+    "CHAMPION_DEADLINE": "2026-10-20T16:45:00Z"
+  }
+}
